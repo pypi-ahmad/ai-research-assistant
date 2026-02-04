@@ -1,0 +1,9 @@
+langchain-google-genai
+langgraph
+langchain-core
+duckduckgo-search
+trafilatura
+python-dotenv
+streamlit
+markdown
+xhtml2pdf
