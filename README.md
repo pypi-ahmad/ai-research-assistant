@@ -40,8 +40,8 @@ The agent is built as a state machine using **LangGraph**:
 
 1.  **Clone the Repository**:
     ```bash
-    git clone https://github.com/yourusername/deep-research-agent.git
-    cd deep-research-agent
+    git clone https://github.com/pypi-ahmad/ai-research-assistant.git
+    cd ai-research-assistant
     ```
 
 2.  **Create a Virtual Environment** (Optional but recommended):
