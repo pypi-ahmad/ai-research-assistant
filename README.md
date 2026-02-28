@@ -1,100 +1,62 @@
-# Deep Research Agent
+# 🕵️‍♂️ Deep Research Agent
 
-This repository contains a LangGraph-based research workflow with two entry points:
-- CLI runner in `main.py`
-- Streamlit UI in `app.py`
+A powerful, autonomous research assistant built with **LangGraph**, **Gemini 2.5 Flash**, and **Streamlit**. This agent takes a user topic, plans a multi-step research strategy, crawls the web for information, and synthesizes a professional Markdown report (with PDF export).
 
-The model configured in code is `gemini-2.5-flash`.
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
+![LangGraph](https://img.shields.io/badge/AI-LangGraph-orange)
+![Gemini](https://img.shields.io/badge/Model-Gemini%202.5-purple)
+![Streamlit](https://img.shields.io/badge/UI-Streamlit-red)
 
-## Architecture (from code)
+## 🚀 Features
 
-Core workflow is implemented in `main.py` as a LangGraph state machine over `AgentState`.
+*   **Autonomous Planning**: Breaks complex topics into distinct, search-optimized queries.
+*   **Deep Web Scraping**: Uses **DuckDuckGo** for privacy-focused searching and **Trafilatura** for robust content extraction.
+*   **Cyclic Research Workflow**: Implements a feedback loop that continues researching until the plan is complete.
+*   **AI Synthesis**: Uses **Gemini 2.5 Flash** to read, summarize, and compile findings into a cohesive report.
+*   **Interactive UI**: A beautiful Streamlit chat interface with real-time progress tracking.
+*   **PDF Export**: Download your final research reports directly as PDFs.
+*   **Cost-Effective**: Designed to run entirely with a **free** Google API Key (no OpenAI or paid search APIs required).
 
-State fields:
-- `topic`
-- `api_key`
-- `plan`
-- `current_query_index`
-- `summaries`
-- `final_report`
+## 🛠️ Architecture
 
-Nodes:
-1. `planner_node`
-   - Uses Gemini to generate query lines.
-   - Cleans each query (`_clean_query`) and keeps up to 3 non-empty queries.
-   - Raises `ValueError` if the resulting plan is empty.
-2. `research_node`
-   - Runs DuckDuckGo search (`DDGS().text`) with `max_results=3`.
-   - Scrapes each result concurrently (`ThreadPoolExecutor(max_workers=3)`).
-   - Accepts only absolute `http/https` URLs (`_is_valid_web_url`).
-   - Extracts content with `trafilatura` and truncates each source text to 15000 chars.
-   - Summarizes combined scraped content with Gemini.
-   - If nothing is scraped, returns a fallback summary (includes search error text when present).
-3. `writer_node`
-   - Combines all summaries and asks Gemini to produce final Markdown report text.
-4. `manager_logic`
-   - Routes `researcher -> researcher` while `current_query_index < len(plan)`.
-   - Routes to `writer` when research loop is complete.
+The agent is built as a state machine using **LangGraph**:
 
-Graph wiring:
-- Entry: `planner`
-- Edge: `planner -> researcher`
-- Conditional: `researcher -> researcher|writer`
-- Edge: `writer -> END`
+1.  **Planner Node**:
+    *   Input: User Topic.
+    *   Action: Generates a 3-step search plan.
+2.  **Research Node** (Loop):
+    *   Action: Executes the current search query.
+    *   Search: DuckDuckGo (Top 3 results).
+    *   Scrape: Extracts main text content from URLs.
+    *   Summarize: Gemini condenses the scraped content.
+    *   State Update: Appends summary to context, advances index.
+3.  **Manager Logic**:
+    *   Check: Are there more queries in the plan?
+    *   Routing: If yes $\rightarrow$ Loop back to *Research Node*. If no $\rightarrow$ Proceed to *Writer Node*.
+4.  **Writer Node**:
+    *   Action: Compiles all summaries into a final Markdown report.
 
-## Execution flow
+## 📦 Installation
 
-### CLI (`main.py`)
-1. Loads environment variables via `python-dotenv` (`load_dotenv()`).
-2. If `GOOGLE_API_KEY` is missing, prompts user input for key.
-3. Prompts research topic and strips whitespace.
-4. Builds initial graph state and calls `app.invoke(initial_state)`.
-5. Prints final report and writes `final_report.md`.
+1.  **Clone the Repository**:
+    ```bash
+    git clone https://github.com/yourusername/deep-research-agent.git
+    cd deep-research-agent
+    ```
 
-### Streamlit (`app.py`)
-1. Reads API key from sidebar `st.text_input`.
-2. Accepts topic via `st.chat_input`.
-3. Builds initial state and streams graph events via `graph_app.stream(initial_state)`.
-4. Displays planner/research progress in status UI.
-5. Stores final report in `st.session_state`.
-6. Converts Markdown to PDF on demand path and exposes `st.download_button` (`research_report.pdf`).
+2.  **Create a Virtual Environment** (Optional but recommended):
+    ```bash
+    python -m venv venv
+    # Windows
+    venv\Scripts\activate
+    # Mac/Linux
+    source venv/bin/activate
+    ```
 
-PDF conversion (`convert_markdown_to_pdf`):
-- Markdown -> HTML (`markdown.markdown`)
-- Sanitization (`nh3.clean` with an allowlist of tags)
-- PDF rendering (`xhtml2pdf.pisa.CreatePDF`)
-
-## Dependencies
-
-From `requirements.txt`:
-- `langchain-google-genai`
-- `langgraph`
-- `langchain-core`
-- `duckduckgo-search`
-- `trafilatura`
-- `python-dotenv`
-- `streamlit`
-- `markdown`
-- `xhtml2pdf`
-- `nh3`
-- `pytest`
-- `pytest-cov`
-
-## Environment setup (venv)
-
-### Windows PowerShell
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-
-### macOS/Linux
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
+3.  **Install Dependencies**:
+    ```bash
+    pip install -r requirements.txt
+    ```
 
 ## Run
 
