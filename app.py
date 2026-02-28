@@ -1,6 +1,7 @@
 import streamlit as st
 import os
 import markdown
+import nh3  # FIX SEC-02: HTML sanitization before PDF rendering
 from xhtml2pdf import pisa
 from io import BytesIO
 from main import app as graph_app  # Import the compiled graph
@@ -10,8 +11,16 @@ def convert_markdown_to_pdf(markdown_content):
     """
     Converts Markdown text to PDF bytes.
     """
-    # Convert Markdown to HTML
-    html_content = markdown.markdown(markdown_content)
+    # FIX SEC-02: sanitize HTML produced from Gemini output before passing to PDF renderer.
+    # markdown.markdown() does NOT strip injected HTML tags; nh3.clean() removes disallowed tags.
+    raw_html = markdown.markdown(markdown_content)
+    _ALLOWED_TAGS = {
+        "p", "h1", "h2", "h3", "h4", "h5", "h6",
+        "ul", "ol", "li", "strong", "em", "code",
+        "pre", "blockquote", "br", "hr",
+        "table", "thead", "tbody", "tr", "th", "td",
+    }
+    html_content = nh3.clean(raw_html, tags=_ALLOWED_TAGS)
     
     # Add some basic styling for the PDF
     styled_html = f"""
@@ -75,9 +84,6 @@ with st.sidebar:
     st.header("Configuration")
     api_key = st.text_input("Google API Key", type="password", help="Get it from Google AI Studio")
     
-    if api_key:
-        os.environ["GOOGLE_API_KEY"] = api_key
-    
     st.divider()
     st.markdown("### How it works")
     st.markdown("1. **Planner**: Breaks topic into 3 queries.")
@@ -91,6 +97,12 @@ if "messages" not in st.session_state:
 if "final_report" not in st.session_state:
     st.session_state.final_report = None
 
+if "pdf_bytes" not in st.session_state:
+    st.session_state.pdf_bytes = None
+
+if "pdf_source_report" not in st.session_state:
+    st.session_state.pdf_source_report = None
+
 # --- Display Chat History ---
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
@@ -98,7 +110,7 @@ for message in st.session_state.messages:
 
 # --- Main Chat Logic ---
 if prompt := st.chat_input("Enter your research topic..."):
-    if not os.environ.get("GOOGLE_API_KEY"):
+    if not api_key and not os.environ.get("GOOGLE_API_KEY"):
         st.error("Please enter your Google API Key in the sidebar.")
         st.stop()
 
@@ -113,7 +125,14 @@ if prompt := st.chat_input("Enter your research topic..."):
         final_report_text = ""
         
         try:
-            initial_state = {"topic": prompt, "plan": [], "current_query_index": 0, "summaries": []}
+            initial_state = {
+                "topic": prompt,
+                "api_key": api_key,
+                "plan": [],
+                "current_query_index": 0,
+                "summaries": [],
+                "final_report": ""
+            }
             
             # Stream the graph execution to show progress
             # We use stream(mode="updates") to see which node finished and what it produced
@@ -130,7 +149,9 @@ if prompt := st.chat_input("Enter your research topic..."):
                     elif node_name == "researcher":
                         # The researcher node outputs the *new* index, so query just finished was index-1
                         idx = state_update.get("current_query_index", 1) - 1
-                        summary_len = len(state_update.get("summaries", [""])[0])
+                        # FIX BUG-03: summaries may be an empty list; guard [0] access
+                        summaries = state_update.get("summaries", [])
+                        summary_len = len(summaries[0]) if summaries else 0
                         status_container.write(f"🔍 **Research Step**: Finished Query {idx+1}. (Scraped & Summarized {summary_len} chars)")
                     
                     elif node_name == "writer":
@@ -144,17 +165,23 @@ if prompt := st.chat_input("Enter your research topic..."):
             # Save to session state
             st.session_state.messages.append({"role": "assistant", "content": final_report_text})
             st.session_state.final_report = final_report_text
+            st.session_state.pdf_bytes = None
+            st.session_state.pdf_source_report = None
 
         except Exception as e:
             status_container.update(label="Error Occurred", state="error")
-            st.error(f"An error occurred: {str(e)}")
+            print(f"[app-error] {e}")
+            st.error("An internal error occurred while generating the report.")
 
 # --- Download Button (Outside the chat loop) ---
 if st.session_state.final_report:
     st.divider()
-    col1, col2 = st.columns([1, 4])
+    col1, _ = st.columns([1, 4])  # FIX DEAD-02: col2 was created but never used
     with col1:
-        pdf_bytes = convert_markdown_to_pdf(st.session_state.final_report)
+        if st.session_state.pdf_source_report != st.session_state.final_report:
+            st.session_state.pdf_bytes = convert_markdown_to_pdf(st.session_state.final_report)
+            st.session_state.pdf_source_report = st.session_state.final_report
+        pdf_bytes = st.session_state.pdf_bytes
         if pdf_bytes:
             st.download_button(
                 label="📥 Download PDF Report",

@@ -7,3 +7,6 @@ python-dotenv
 streamlit
 markdown
 xhtml2pdf
+nh3
+pytest
+pytest-cov

@@ -1,112 +1,141 @@
-# 🕵️‍♂️ Deep Research Agent
+# Deep Research Agent
 
-A powerful, autonomous research assistant built with **LangGraph**, **Gemini 2.5 Flash**, and **Streamlit**. This agent takes a user topic, plans a multi-step research strategy, crawls the web for information, and synthesizes a professional Markdown report (with PDF export).
+This repository contains a LangGraph-based research workflow with two entry points:
+- CLI runner in `main.py`
+- Streamlit UI in `app.py`
 
-![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
-![LangGraph](https://img.shields.io/badge/AI-LangGraph-orange)
-![Gemini](https://img.shields.io/badge/Model-Gemini%202.5-purple)
-![Streamlit](https://img.shields.io/badge/UI-Streamlit-red)
+The model configured in code is `gemini-2.5-flash`.
 
-## 🚀 Features
+## Architecture (from code)
 
-*   **Autonomous Planning**: Breaks complex topics into distinct, search-optimized queries.
-*   **Deep Web Scraping**: Uses **DuckDuckGo** for privacy-focused searching and **Trafilatura** for robust content extraction.
-*   **Cyclic Research Workflow**: Implements a feedback loop that continues researching until the plan is complete.
-*   **AI Synthesis**: Uses **Gemini 2.5 Flash** to read, summarize, and compile findings into a cohesive report.
-*   **Interactive UI**: A beautiful Streamlit chat interface with real-time progress tracking.
-*   **PDF Export**: Download your final research reports directly as PDFs.
-*   **Cost-Effective**: Designed to run entirely with a **free** Google API Key (no OpenAI or paid search APIs required).
+Core workflow is implemented in `main.py` as a LangGraph state machine over `AgentState`.
 
-## 🛠️ Architecture
+State fields:
+- `topic`
+- `api_key`
+- `plan`
+- `current_query_index`
+- `summaries`
+- `final_report`
 
-The agent is built as a state machine using **LangGraph**:
+Nodes:
+1. `planner_node`
+   - Uses Gemini to generate query lines.
+   - Cleans each query (`_clean_query`) and keeps up to 3 non-empty queries.
+   - Raises `ValueError` if the resulting plan is empty.
+2. `research_node`
+   - Runs DuckDuckGo search (`DDGS().text`) with `max_results=3`.
+   - Scrapes each result concurrently (`ThreadPoolExecutor(max_workers=3)`).
+   - Accepts only absolute `http/https` URLs (`_is_valid_web_url`).
+   - Extracts content with `trafilatura` and truncates each source text to 15000 chars.
+   - Summarizes combined scraped content with Gemini.
+   - If nothing is scraped, returns a fallback summary (includes search error text when present).
+3. `writer_node`
+   - Combines all summaries and asks Gemini to produce final Markdown report text.
+4. `manager_logic`
+   - Routes `researcher -> researcher` while `current_query_index < len(plan)`.
+   - Routes to `writer` when research loop is complete.
 
-1.  **Planner Node**:
-    *   Input: User Topic.
-    *   Action: Generates a 3-step search plan.
-2.  **Research Node** (Loop):
-    *   Action: Executes the current search query.
-    *   Search: DuckDuckGo (Top 3 results).
-    *   Scrape: Extracts main text content from URLs.
-    *   Summarize: Gemini condenses the scraped content.
-    *   State Update: Appends summary to context, advances index.
-3.  **Manager Logic**:
-    *   Check: Are there more queries in the plan?
-    *   Routing: If yes $\rightarrow$ Loop back to *Research Node*. If no $\rightarrow$ Proceed to *Writer Node*.
-4.  **Writer Node**:
-    *   Action: Compiles all summaries into a final Markdown report.
+Graph wiring:
+- Entry: `planner`
+- Edge: `planner -> researcher`
+- Conditional: `researcher -> researcher|writer`
+- Edge: `writer -> END`
 
-## 📦 Installation
+## Execution flow
 
-1.  **Clone the Repository**:
-    ```bash
-    git clone https://github.com/yourusername/deep-research-agent.git
-    cd deep-research-agent
-    ```
+### CLI (`main.py`)
+1. Loads environment variables via `python-dotenv` (`load_dotenv()`).
+2. If `GOOGLE_API_KEY` is missing, prompts user input for key.
+3. Prompts research topic and strips whitespace.
+4. Builds initial graph state and calls `app.invoke(initial_state)`.
+5. Prints final report and writes `final_report.md`.
 
-2.  **Create a Virtual Environment** (Optional but recommended):
-    ```bash
-    python -m venv venv
-    # Windows
-    venv\Scripts\activate
-    # Mac/Linux
-    source venv/bin/activate
-    ```
+### Streamlit (`app.py`)
+1. Reads API key from sidebar `st.text_input`.
+2. Accepts topic via `st.chat_input`.
+3. Builds initial state and streams graph events via `graph_app.stream(initial_state)`.
+4. Displays planner/research progress in status UI.
+5. Stores final report in `st.session_state`.
+6. Converts Markdown to PDF on demand path and exposes `st.download_button` (`research_report.pdf`).
 
-3.  **Install Dependencies**:
-    ```bash
-    pip install -r requirements.txt
-    ```
+PDF conversion (`convert_markdown_to_pdf`):
+- Markdown -> HTML (`markdown.markdown`)
+- Sanitization (`nh3.clean` with an allowlist of tags)
+- PDF rendering (`xhtml2pdf.pisa.CreatePDF`)
 
-## 🔑 Configuration
+## Dependencies
 
-You only need one API key: **Google Gemini API Key**.
+From `requirements.txt`:
+- `langchain-google-genai`
+- `langgraph`
+- `langchain-core`
+- `duckduckgo-search`
+- `trafilatura`
+- `python-dotenv`
+- `streamlit`
+- `markdown`
+- `xhtml2pdf`
+- `nh3`
+- `pytest`
+- `pytest-cov`
 
-1.  Get your key from [Google AI Studio](https://aistudio.google.com/).
-2.  Create a `.env` file in the root directory:
-    ```env
-    GOOGLE_API_KEY=your_actual_api_key_here
-    ```
-    *Alternatively, you can enter the key directly in the Streamlit sidebar.*
+## Environment setup (venv)
 
-## 🖥️ Usage
+### Windows PowerShell
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
 
-### Option 1: Web Interface (Streamlit)
-The recommended way to use the agent.
+### macOS/Linux
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
 
+## Run
+
+### Streamlit UI
 ```bash
 streamlit run app.py
 ```
-*   Opens in your browser at `http://localhost:8501`.
-*   Enter your topic in the chat.
-*   Watch the agent plan and research in real-time.
-*   Download the final PDF.
 
-### Option 2: CLI Mode
-Run the agent directly in your terminal.
-
+### CLI
 ```bash
 python main.py
 ```
-*   Follow the prompts to enter your API key (if not in `.env`) and research topic.
-*   The final report will be saved as `final_report.md`.
 
-## 📂 Project Structure
+## Test (validated)
 
-```
-├── app.py              # Streamlit UI implementation
-├── main.py             # Core LangGraph logic and CLI entry point
-├── requirements.txt    # Project dependencies
-├── .env                # Environment variables (API Key)
-└── final_report.md     # Output file (generated by CLI)
+The current repository test suite passes with:
+```bash
+python -m pytest -q
 ```
 
-## ⚠️ Limitations
+## Project layout
 
-*   **Rate Limits**: The free Gemini API has rate limits. If you hit them, the agent may pause or fail.
-*   **Scraping**: Some websites block automated scrapers. The agent is designed to skip these and continue with other sources.
-*   **Hallucinations**: Like all LLMs, the agent may occasionally hallucinate. Always verify critical facts from the original sources (URLs are usually cited in logs).
+```text
+.
+├── app.py
+├── main.py
+├── requirements.txt
+├── tests/
+│   ├── test_agent.py
+│   ├── integration/
+│   └── unit/
+└── final_report.md   (runtime output)
+```
 
-## 📄 License
+## Limitations (code-backed)
 
-MIT License. Feel free to modify and use for your own research projects!
+- Requires `GOOGLE_API_KEY` (from sidebar state or environment); otherwise execution stops/errors.
+- Planner uses at most 3 generated queries.
+- Search uses DuckDuckGo top 3 results per query.
+- Scraping only processes absolute `http/https` URLs.
+- Scraped text per source is truncated to 15000 characters.
+- Search and scrape exceptions are handled by skipping failed items and continuing; output may be partial.
+- Final report quality depends on external search/scraped content and model response.
+- Streamlit state is in-session memory (`st.session_state`); no persistent database/storage layer in code.

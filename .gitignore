@@ -1,3 +1,13 @@
+# Runtime artifacts (FIX DEAD-01: generated outputs must not be version-controlled)
+final_report.md
+research_report.pdf
+
+# Virtual environments
+.venv/
+
+# pytest
+.pytest_cache/
+
 # Python
 __pycache__/
 *.pyc
