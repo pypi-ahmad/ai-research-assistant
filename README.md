@@ -101,3 +101,5 @@ python -m pytest -q
 - Search and scrape exceptions are handled by skipping failed items and continuing; output may be partial.
 - Final report quality depends on external search/scraped content and model response.
 - Streamlit state is in-session memory (`st.session_state`); no persistent database/storage layer in code.
+
+<p align="center">Made with ❤️ by Ahmad Mujtaba</p>
